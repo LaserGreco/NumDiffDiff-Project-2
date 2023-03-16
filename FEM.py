@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 class Grid:
     def __init__(self, **kwargs) -> None:
@@ -41,22 +42,82 @@ class Grid:
         self.h = self.x[1:] - self.x[:-1]
 
 class Function(Grid):
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, func = None, **kwargs) -> None:
         super().__init__(**kwargs)
-        self.f = None
-        if "f" in kwargs.keys():
-            f = kwargs["f"]
-            if callable(f):
-                f = f(self.x)
-            assert len(f) == self.N + 1
-            self.f = f
+        if func is not None:
+            assert isinstance(func, Function)
+            self.f = func.f.copy()
+            self.x = func.x
+            self.N = func.N
         else:
-            self.f = np.zeros_like(self.x)
+            if "f" in kwargs.keys():
+                f = kwargs["f"]
+                if callable(f):
+                    f = f(self.x)
+                assert len(f) == self.N + 1
+                self.f = f.copy()
+            else:
+                self.f = np.zeros_like(self.x)
+
+    def __add__(self, other):
+        out = Function(self)
+        if isinstance(other, Function):
+            out.f += other.f
+        else:   
+            out.f += other
+        return out
+    
+    def __sub__(self, other):
+        if isinstance(other, Function):
+            f = other.f
+        else:
+            f = other
+        return self + (-f)
     
     def get_F(self) -> np.ndarray:
         F = self.f[1:-1] * self.h[1:]
 
         return F
+    
+    def plot(self, *args, **kwargs) -> None:
+        if "ax" in kwargs.keys():
+            ax = kwargs["ax"]
+            kwargs.pop("ax")
+            ax.plot(self.x, self.f, *args, **kwargs)
+        else:
+            plt.plot(self.x, self.f, *args, **kwargs)
+
+class Solution(Function):
+    def __init__(self, exact=None, func=None, **kwargs) -> None:
+        super().__init__(func, **kwargs)
+        self.set_exact(exact)
+
+    def set_exact(self, exact) -> None:
+        if callable(exact):
+            exact = Function(f=exact, grid=self)
+        elif isinstance(exact, np.ndarray):
+            assert len(exact) == self.N+1
+            exact = Function(f=exact, grid=self)
+        elif isinstance(exact, Function):
+            assert (exact.x == self.x).all()
+        self.exact = exact
+
+    def get_error(self) -> Function:
+        assert self.exact is not None
+
+        return self - self.exact
+    
+    def plot_comparison(self, *args, **kwargs) -> None:
+        assert self.exact is not None
+        assert "label" not in kwargs.keys()
+        self.plot(label="Numerical", *args, **kwargs)
+        self.exact.plot("o", *args, label="Exact", **kwargs)
+
+    def plot_error(self, *args, **kwargs) -> None:
+        assert self.exact is not None
+        if "label" not in kwargs.keys():
+            kwargs["label"] = "Error"
+        self.get_error().plot(*args, **kwargs)
         
 class Solver(Grid):
     def __init__(self, a = 1, b = 1, c = 1, **kwargs) -> None:
@@ -84,46 +145,48 @@ class Solver(Grid):
             M[i:i+2, i:i+2] += Ak(i) + Bk(i) + Ck(i)
         self.M = M[1:-1, 1:-1]
 
-    def solve(self, f) -> Function:
+    def solve(self, f, exact=None) -> Function:
         if callable(f):
             f = Function(f=f(self.x), grid=self)
         F = f.get_F()
-        u = Function(grid=self)
+        u = Solution(exact=exact, grid=self)
         u.f[1:-1] = np.linalg.solve(self.M, F)
         return u
     
 
-def solve_system(f, **kwargs) -> Function:
+def solve_system(f, exact=None, **kwargs) -> Function:
     if "solver" in kwargs.keys():
         assert "grid" not in kwargs.keys()
         solver = kwargs["solver"]
     else:
         solver = Solver(**kwargs)
 
-    return solver.solve(f)
+    return solver.solve(f, exact)
 
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-
-    def g(x):
-        return x*(1 - x) / 2
+    def exact(x):
+        # return x*(1 - x) / 2
+        return np.sin(3*np.pi*x)
 
     def f(x):
-        return (-x**2 - x + 3)/2
+        # return (-x**2 - x + 3)/2
+        return 3*np.pi*np.cos(3*np.pi*x) + np.sin(3*np.pi*x) + (3*np.pi)**2 * np.sin(3*np.pi*x)
 
 
-    u = solve_system(f)
+    u = solve_system(f, exact=exact)
+    # u.set_exact(g)
 
-    x = u.x
-
-    plt.plot(x, u.f, x, g(x),'o')
-    plt.legend(['Numerical','Exact'])
+    u.plot_comparison()
+    plt.legend()
     plt.xlabel('x')
 
     plt.show()
 
-    plt.plot(x, u.f-g(x))
-    plt.legend("error")
-    plt.xlabel('x')
+    ax = plt.subplot()
+
+    # (u-u_exact).plot(ax=ax, label="error")
+    u.plot_error(ax=ax)
+    ax.legend()
+    ax.set_xlabel('x')
 
     plt.show()
