@@ -163,6 +163,25 @@ def solve_system(f, exact=None, **kwargs) -> Function:
 
     return solver.solve(f, exact)
 
+def plot_convergence(f, exact, N=8, num=7, title=None, **kwargs):
+    Econv = np.zeros(num)
+    Hconv = np.zeros(num)
+    for i in range(num):
+        U = solve_system(f, exact, N=N, **kwargs)
+        Econv[i] = np.max(np.abs(U.get_error().f))
+        Hconv[i] = U.h[0]
+        N *= 2
+    order = np.polyfit(np.log(Hconv),np.log(Econv),1)[0]
+
+    plt.figure(figsize=(6,3))
+    plt.loglog(Hconv, Econv, ".", label=f"p = {order:.2f}")
+    plt.xlabel("h")
+    plt.ylabel("error")
+    plt.legend()
+    if title:
+        plt.title(title)
+    plt.show()
+
 if __name__ == "__main__":
     def exact(x):
         # return x*(1 - x) / 2
@@ -173,8 +192,7 @@ if __name__ == "__main__":
         return 3*np.pi*np.cos(3*np.pi*x) + np.sin(3*np.pi*x) + (3*np.pi)**2 * np.sin(3*np.pi*x)
 
 
-    u = solve_system(f, exact=exact)
-    # u.set_exact(g)
+    u = solve_system(f, exact=exact, N=1024)
 
     u.plot_comparison()
     plt.legend()
@@ -184,9 +202,10 @@ if __name__ == "__main__":
 
     ax = plt.subplot()
 
-    # (u-u_exact).plot(ax=ax, label="error")
     u.plot_error(ax=ax)
     ax.legend()
     ax.set_xlabel('x')
 
     plt.show()
+
+    plot_convergence(f, exact, title="Convergence of solver")
