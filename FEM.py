@@ -174,7 +174,7 @@ def plot_convergence(f, exact, N=8, num=7, title=None, **kwargs):
         EconvL2[i] = np.sqrt(simpson(e**2, U.x))
         EconvH1[i] = np.sqrt(
             simpson(e**2, U.x) +
-            simpson((np.gradient(U.get_error().f, U.x))**2, U.x) 
+            simpson((np.gradient(e, U.x))**2, U.x) 
             # -e[1:-1] @ (e[:-2] - 2 * e[1:-1] + e[2:])/U.h[0]
         )
         # EconvH1[i] = np.sqrt(
