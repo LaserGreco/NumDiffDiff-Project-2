@@ -2,6 +2,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import simpson
 
+def get_phi(x, X):
+    v = np.where(
+        np.logical_and(X[:-2] < x, x <= X[1:-1]),
+       ( x - X[:-2]) /(X[1:-1] - X[:-2]),
+       (X[2:] - x) /(X[2:] - X[1:-1])
+    )
+    v[v < 0] = 0
+    v[v > 1] = 0
+
+    return v
+
 class Grid:
     def __init__(self, **kwargs) -> None:
         if "x" in kwargs.keys() or "grid" in kwargs.keys():
@@ -60,6 +71,10 @@ class Function(Grid):
                 self.f = f.copy()
             else:
                 self.f = np.zeros_like(self.x)
+        if "disc" in kwargs.keys():
+            self.disc = kwargs["disc"]
+        else:
+            self.disc = None
 
     def __add__(self, other):
         out = Function(self)
@@ -78,6 +93,9 @@ class Function(Grid):
     
     def get_F(self) -> np.ndarray:
         F = self.f[1:-1] * self.h[1:]
+        if self.disc is not None:
+            for v, p in self.disc:
+                F += v*get_phi(p, self.x)
         return F
     
     def plot(self, *args, **kwargs) -> None:
@@ -146,30 +164,30 @@ class Solver(Grid):
             M[i:i+2, i:i+2] += Ak(i) + Bk(i) + Ck(i)
         self.M = M[1:-1, 1:-1]
 
-    def solve(self, f, exact=None) -> Function:
+    def solve(self, f, exact=None, disc=None) -> Function:
         if callable(f):
-            f = Function(f=f(self.x), grid=self)
+            f = Function(f=f(self.x), grid=self, disc=disc)
         F = f.get_F()
         u = Solution(exact=exact, grid=self)
         u.f[1:-1] = np.linalg.solve(self.M, F)
         return u
     
 
-def solve_system(f, exact=None, **kwargs) -> Function:
+def solve_system(f, exact=None, disc=None, **kwargs) -> Function:
     if "solver" in kwargs.keys():
         assert "grid" not in kwargs.keys()
         solver = kwargs["solver"]
     else:
         solver = Solver(**kwargs)
 
-    return solver.solve(f, exact)
+    return solver.solve(f, exact, disc=disc)
 
-def plot_convergence(f, exact, N=8, num=7, title=None, **kwargs):
+def plot_convergence(f, exact, disc=None, N=8, num=7, title=None, **kwargs):
     EconvL2 = np.zeros(num)
     EconvH1 = np.zeros(num)
     Hconv = np.zeros(num)
     for i in range(num):
-        U = solve_system(f, exact, N=N, **kwargs)
+        U = solve_system(f, exact, N=N, disc=disc, **kwargs)
         e = U.get_error().f
         EconvL2[i] = np.sqrt(simpson(e**2, U.x))
         EconvH1[i] = np.sqrt(
@@ -199,29 +217,57 @@ def plot_convergence(f, exact, N=8, num=7, title=None, **kwargs):
     plt.show()
 
 if __name__ == "__main__":
-    def exact(x):
-        # return x*(1 - x) / 2
-        return np.sin(3*np.pi*x)
+    # def exact(x):
+    #     # return x*(1 - x) / 2
+    #     return np.sin(3*np.pi*x)
 
-    def f(x):
-        # return (-x**2 - x + 3)/2
-        return 3*np.pi*np.cos(3*np.pi*x) + np.sin(3*np.pi*x) + (3*np.pi)**2 * np.sin(3*np.pi*x)
+    # def f(x):
+    #     # return (-x**2 - x + 3)/2
+    #     return 3*np.pi*np.cos(3*np.pi*x) + np.sin(3*np.pi*x) + (3*np.pi)**2 * np.sin(3*np.pi*x)
 
 
-    # u = solve_system(f, exact=exact, N=100)
+    # # u = solve_system(f, exact=exact, N=100)
 
-    # u.plot_comparison()
-    # plt.legend()
-    # plt.xlabel('x')
+    # # u.plot_comparison()
+    # # plt.legend()
+    # # plt.xlabel('x')
 
-    # plt.show()
+    # # plt.show()
 
-    # ax = plt.subplot()
+    # # ax = plt.subplot()
 
-    # u.plot_error(ax=ax)
-    # ax.legend()
-    # ax.set_xlabel('x')
+    # # u.plot_error(ax=ax)
+    # # ax.legend()
+    # # ax.set_xlabel('x')
 
-    # plt.show()
+    # # plt.show()
 
-    plot_convergence(f, exact, title="Convergence of solver")
+    # plot_convergence(f, exact, title="Convergence of solver")
+
+    def w1_exact(x):
+        return np.where(x < 1/2, 2*x, 2*(1-x))
+
+    def w1_f(x, a=1, b=1, c=1):
+        return np.where(x < 1/2, 2*b+2*c*x, -2*b+2*c*(1-x))
+    
+    w1_disc = np.array([
+        [4, 1/2]
+    ])
+
+    u = solve_system(w1_f, exact=w1_exact, N=100, disc=w1_disc)
+
+    u.plot_comparison()
+    plt.legend()
+    plt.xlabel('x')
+
+    plt.show()
+
+    ax = plt.subplot()
+
+    u.plot_error(ax=ax)
+    ax.legend()
+    ax.set_xlabel('x')
+
+    plt.show()
+
+    plot_convergence(w1_f, w1_exact, disc=w1_disc, title="Convergence of solver")
