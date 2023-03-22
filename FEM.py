@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.integrate import simpson
 
 class Grid:
     def __init__(self, **kwargs) -> None:
@@ -44,6 +45,7 @@ class Grid:
 class Function(Grid):
     def __init__(self, func = None, **kwargs) -> None:
         super().__init__(**kwargs)
+        self.func=func
         if func is not None:
             assert isinstance(func, Function)
             self.f = func.f.copy()
@@ -76,7 +78,6 @@ class Function(Grid):
     
     def get_F(self) -> np.ndarray:
         F = self.f[1:-1] * self.h[1:]
-
         return F
     
     def plot(self, *args, **kwargs) -> None:
@@ -164,17 +165,32 @@ def solve_system(f, exact=None, **kwargs) -> Function:
     return solver.solve(f, exact)
 
 def plot_convergence(f, exact, N=8, num=7, title=None, **kwargs):
-    Econv = np.zeros(num)
+    EconvL2 = np.zeros(num)
+    EconvH1 = np.zeros(num)
     Hconv = np.zeros(num)
     for i in range(num):
         U = solve_system(f, exact, N=N, **kwargs)
-        Econv[i] = np.max(np.abs(U.get_error().f))
+        e = U.get_error().f
+        EconvL2[i] = np.sqrt(simpson(e**2, U.x))
+        EconvL2[i] = np.sqrt(
+            simpson(e**2, U.x) +
+            simpson((np.gradient(U.get_error().f, U.x))**2, U.x) 
+            # -e[1:-1] @ (e[:-2] - 2 * e[1:-1] + e[2:])/U.h[0]
+        )
+        EconvH1[i] = np.sqrt(
+            simpson(e**2, U.x) +
+            # simpson((np.gradient(U.get_error().f, U.x))**2, U.x) 
+            -e[1:-1] @ (e[:-2] - 2 * e[1:-1] + e[2:])/U.h[0]
+        )
+
         Hconv[i] = U.h[0]
         N *= 2
-    order = np.polyfit(np.log(Hconv),np.log(Econv),1)[0]
+    orderL2 = np.polyfit(np.log(Hconv),np.log(EconvL2),1)[0]
+    orderH1 = np.polyfit(np.log(Hconv),np.log(EconvH1),1)[0]
 
     plt.figure(figsize=(6,3))
-    plt.loglog(Hconv, Econv, ".", label=f"p = {order:.2f}")
+    plt.loglog(Hconv, EconvL2, ".", label=r"$L^2$-norm, " + f"p = {orderL2:.2f}")
+    plt.loglog(Hconv, EconvH1, ".", label=r"$H^1$-norm, "f"p = {orderH1:.2f}")
     plt.xlabel("h")
     plt.ylabel("error")
     plt.legend()
@@ -192,20 +208,20 @@ if __name__ == "__main__":
         return 3*np.pi*np.cos(3*np.pi*x) + np.sin(3*np.pi*x) + (3*np.pi)**2 * np.sin(3*np.pi*x)
 
 
-    u = solve_system(f, exact=exact, N=1024)
+    # u = solve_system(f, exact=exact, N=100)
 
-    u.plot_comparison()
-    plt.legend()
-    plt.xlabel('x')
+    # u.plot_comparison()
+    # plt.legend()
+    # plt.xlabel('x')
 
-    plt.show()
+    # plt.show()
 
-    ax = plt.subplot()
+    # ax = plt.subplot()
 
-    u.plot_error(ax=ax)
-    ax.legend()
-    ax.set_xlabel('x')
+    # u.plot_error(ax=ax)
+    # ax.legend()
+    # ax.set_xlabel('x')
 
-    plt.show()
+    # plt.show()
 
     plot_convergence(f, exact, title="Convergence of solver")
